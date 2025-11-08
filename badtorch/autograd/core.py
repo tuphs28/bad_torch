@@ -37,17 +37,17 @@ class Tensor:
 
         self.grad = np.ones_like(self.data)
 
-        visited = []
-        ordered = []
-        def build_topo(current_tensor):
-            visited.append(current_tensor)
+        visited_ancestors = []
+        ordered_ancestors = []
+        def topo_sort(current_tensor):
+            visited_ancestors.append(current_tensor)
             for parent in current_tensor._parents:
-                if parent not in visited:
-                    build_topo(parent)
-            ordered.append(current_tensor)
-        build_topo(self)
+                if parent not in visited_ancestors:
+                    topo_sort(parent)
+            ordered_ancestors.append(current_tensor)
+        topo_sort(self)
 
-        for tensor in reversed(ordered):
+        for tensor in reversed(ordered_ancestors):
             for backward_fnc in tensor._backward_fncs:
                 backward_fnc()
 
@@ -73,3 +73,47 @@ class Tensor:
             result._backward_fncs.append(vjp)
 
         return result
+    
+    def vector_vector_add(self, other):
+        """Temporary method whilst working on code. Here, self in a nx1 vector and other is a nx1 vector"""
+
+        assert isinstance(other, Tensor), f"Expected a Tensor, got a {type(other)}"
+        result_requires_grad = self.requires_grad or other.requires_grad
+        result = Tensor(
+            data = self.data + other.data, 
+            requires_grad = result_requires_grad
+        )
+        result._parents += [self, other]   
+
+        if self.requires_grad:
+            def vjp():
+                self.grad += result.grad
+            result._backward_fncs.append(vjp)
+        if other.requires_grad:
+            def vjp():
+                other.grad += result.grad
+            result._backward_fncs.append(vjp)
+
+        return result
+    
+    def relu(self):
+        """Temporary method whilst working on code. Here, self in a nx1 vector"""
+
+        mask = self.data <= 0.0
+        data_masked = self.data.copy()
+        data_masked[mask] = 0
+        result = Tensor(
+            data = data_masked, 
+            requires_grad = self.requires_grad
+        )
+        result._parents += [self]
+
+        if self.requires_grad:
+            def vjp():
+                grad_masked = result.grad.copy()
+                grad_masked[mask] = 0
+                self.grad += grad_masked
+            result._backward_fncs.append(vjp)
+
+        return result
+
