@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Callable, Optional
+from typing import Callable, Optional, Union
 
 import numpy as np
 from numpy.typing import NDArray
@@ -15,7 +15,7 @@ from numpy.typing import NDArray
 
 class Tensor:
 
-    def __init__(self, data, requires_grad = False):
+    def __init__(self, data: Union[np.ndarray, int, float], requires_grad: bool = False) -> None:
 
         if isinstance(data, (int, float)):
             data = np.array(data, dtype=np.float32)
@@ -33,10 +33,10 @@ class Tensor:
 
 
     @property
-    def shape(self):
+    def shape(self) -> tuple[int]:
         return self.data.shape
     
-    def backward(self):
+    def backward(self) -> None:
 
         self.grad = np.ones_like(self.data)
 
@@ -54,7 +54,7 @@ class Tensor:
             for backward_fnc in tensor._backward_fncs:
                 backward_fnc()
 
-    def _unbroadcast_gradient(self, grad):
+    def _unbroadcast_gradient(self, grad: np.ndarray) -> np.ndarray:
 
         ndims_added = len(grad.shape) - len(self.data.shape)
         if ndims_added > 0:
@@ -67,9 +67,13 @@ class Tensor:
         return grad
 
 
-    def __add__(self, other):
+    def __add__(self, other: Union[int, float, Tensor]) -> Tensor:
 
-        assert isinstance(other, Tensor), f"Expected a Tensor, got a {type(other)}"
+        if isinstance(other, (int, float)):
+            other = Tensor(other, requires_grad=False)
+        elif not isinstance(other, Tensor):
+            raise ValueError(f"Expected an int, a float, or Tensor, got a {type(other)}")
+        
         result_requires_grad = self.requires_grad or other.requires_grad
         result = Tensor(
             data = self.data + other.data, 
@@ -93,16 +97,22 @@ class Tensor:
         return result
     
 
-    def __sub__(self, other):
+    def __sub__(self, other: Union[int, float, Tensor]) -> Tensor:
 
-        assert isinstance(other, Tensor), f"Expected a Tensor, got a {type(other)} which is not currently supported"
+        if isinstance(other, (int, float)):
+            other = Tensor(other, requires_grad=False)
+        elif not isinstance(other, Tensor):
+            raise ValueError(f"Expected an int, a float, or Tensor, got a {type(other)}")
 
-        return self + (Tensor(-1, requires_grad=other.requires_grad) * other)
+        return self + (Tensor(-1) * other)
     
 
-    def __mul__(self, other):
+    def __mul__(self, other: Union[int, float, Tensor]) -> Tensor:
 
-        assert isinstance(other, Tensor), f"Expected a Tensor, got a {type(other)} which is not currently supported"
+        if isinstance(other, (int, float)):
+            other = Tensor(other, requires_grad=False)
+        elif not isinstance(other, Tensor):
+            raise ValueError(f"Expected an int, a float, or Tensor, got a {type(other)}")
 
         result_requires_grad = self.requires_grad or other.requires_grad
         result = Tensor(
@@ -126,7 +136,7 @@ class Tensor:
 
         return result
     
-    def __matmul__(self, other):
+    def __matmul__(self, other: Tensor) -> Tensor:
 
         assert isinstance(other, Tensor), f"Expected a Tensor, got a {type(other)} which is not currently supported"
 
@@ -157,7 +167,7 @@ class Tensor:
         return result
 
     
-    def relu(self):
+    def relu(self) -> Tensor:
         """Temporary method whilst working on code. Here, self in a nx1 vector"""
 
         mask = self.data <= 0.0
@@ -177,6 +187,34 @@ class Tensor:
                     self.grad += grad_masked
                 return vjp
             vjp = make_vjp(mask)
+            result._backward_fncs.append(vjp)
+
+        return result
+    
+    def log(self) -> Tensor:
+        result = Tensor(
+            data = np.log(self.data), 
+            requires_grad = self.requires_grad
+        )
+        result._parents += [self]
+
+        if self.requires_grad:
+            def vjp():
+                self.grad += result.grad / self.data
+            result._backward_fncs.append(vjp)
+
+        return result
+    
+    def exp(self) -> Tensor:
+        result = Tensor(
+            data = np.exp(self.data), 
+            requires_grad = self.requires_grad
+        )
+        result._parents += [self]
+
+        if self.requires_grad:
+            def vjp():
+                self.grad += result.grad * self.data
             result._backward_fncs.append(vjp)
 
         return result
