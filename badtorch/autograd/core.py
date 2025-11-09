@@ -54,15 +54,41 @@ class Tensor:
             for backward_fnc in tensor._backward_fncs:
                 backward_fnc()
 
+    def _unbroadcast_gradient(self, grad):
+
+        ndims_added = len(grad.shape) - len(self.data.shape)
+        if ndims_added > 0:
+            grad = np.sum(grad, axis=tuple(range(ndims_added)))
+
+        for dim_idx, (dim_grad, dim_data) in enumerate(zip(grad.shape, self.data.shape)):
+            if dim_grad > 1 and dim_data == 1:
+                grad = np.sum(grad, axis=dim_grad, keepdims=True)
+        
+        return grad
+
 
     def __add__(self, other):
 
-        assert isinstance(other, Tensor), f"Expected a Tensor, got a {type(other)} which is not currently supported"
+        assert isinstance(other, Tensor), f"Expected a Tensor, got a {type(other)}"
+        result_requires_grad = self.requires_grad or other.requires_grad
+        result = Tensor(
+            data = self.data + other.data, 
+            requires_grad = result_requires_grad
+        )
+        result._parents += [self, other]   
 
-        if (len(self.shape) == 1) and (len(other.shape) == 1) and (self.shape[0] == other.shape[0]):
-            result = self._vector_vector_add(other)
-        else:
-            raise NotImplementedError("Tensor addition for a {self.shape} Tensor with a {other.shape} Tensor not currently implemented")
+        if self.requires_grad:
+            def vjp():
+                grad = result.grad
+                grad = self._unbroadcast_gradient(grad)
+                self.grad += grad
+            result._backward_fncs.append(vjp)
+        if other.requires_grad:
+            def vjp():
+                grad = result.grad
+                grad = other._unbroadcast_gradient(grad)
+                other.grad += grad
+            result._backward_fncs.append(vjp)
 
         return result
     
@@ -78,147 +104,48 @@ class Tensor:
 
         assert isinstance(other, Tensor), f"Expected a Tensor, got a {type(other)} which is not currently supported"
 
-        if (len(self.shape) == 0) and (len(other.shape) == 1): # scalar-vector multiply
-            result = self._scalar_vector_multiply(other)
-        elif (len(self.shape) == 1) and (len(other.shape) == 0): # vector-scalar multiply
-            result = other._scalar_vector_multiply(self)
-        elif (len(self.shape) == 0) and (len(other.shape) == 2): # scalar-matrix multiply
-            result = self._scalar_matrix_multiply(other)
-        elif (len(self.shape) == 2) and (len(other.shape) == 0): # scalar-matrix multiply
-            result = other._scalar_matrix_multiply(self)
-        else:
-            raise NotImplementedError(f"Multiplication for a {self.shape} Tensor with a {other.shape} Tensor not currently implemented")
-        
+        result_requires_grad = self.requires_grad or other.requires_grad
+        result = Tensor(
+            data = self.data * other.data, 
+            requires_grad = result_requires_grad
+        )
+        result._parents += [self, other]   
+    
+        if self.requires_grad:
+            def vjp():
+                grad = result.grad * other.data
+                grad = self._unbroadcast_gradient(grad)
+                self.grad += grad
+            result._backward_fncs.append(vjp)
+        if other.requires_grad:
+            def vjp():
+                grad = result.grad * self.data
+                grad = other._unbroadcast_gradient(grad)
+                other.grad += grad
+            result._backward_fncs.append(vjp)
+
         return result
     
     def __matmul__(self, other):
 
         assert isinstance(other, Tensor), f"Expected a Tensor, got a {type(other)} which is not currently supported"
 
-        if (len(self.shape) == 2) and (len(other.shape) == 1) and (self.shape[-1] == other.shape[0]): # Matrix-vector multiply
-            result = self._matrix_vector_matrixmultiply(other)
-        elif (len(self.shape) == 1) and (len(other.shape) == 1) and (self.shape[0] == other.shape[0]): # Vector-vector multiply 
-            result = self._vector_vector_matrixmultiply(other)
-        else:
-            raise NotImplementedError("Tensor multiply for a {self.shape} Tensor with a {other.shape} Tensor not currently implemented")
-        
-        return result
-    
-
-    def _matrix_vector_matrixmultiply(self, other):
-        """Temporary method whilst working on code. Here, self in a mxn matrix and other is a nx1 vector"""
-        
-        assert isinstance(other, Tensor), f"Expected a Tensor, got a {type(other)}"
-
         result_requires_grad = self.requires_grad or other.requires_grad
         result = Tensor(
             data = self.data @ other.data, 
             requires_grad = result_requires_grad
         )
-        result._parents += [self, other]
-
-        if self.requires_grad:
-            def vjp():
-                self.grad += np.outer(result.grad, other.data)
-            result._backward_fncs.append(vjp)
-        if other.requires_grad:
-            def vjp():
-                other.grad += self.data.T @ result.grad
-            result._backward_fncs.append(vjp)
-
-        return result
-    
-
-    def _vector_vector_matrixmultiply(self, other):
-        """Temporary method whilst working on code. Here, self in a mxn matrix and other is a nx1 vector"""
-        
-        assert isinstance(other, Tensor), f"Expected a Tensor, got a {type(other)}"
-
-        result_requires_grad = self.requires_grad or other.requires_grad
-        result = Tensor(
-            data = np.dot(self.data, other.data), 
-            requires_grad = result_requires_grad
-        )
-        result._parents += [self, other]
-
-        if self.requires_grad:
-            def vjp():
-                self.grad += result.grad * other.data
-            result._backward_fncs.append(vjp)
-        if other.requires_grad:
-            def vjp():
-                other.grad += result.grad * self.data
-            result._backward_fncs.append(vjp)
-
-        return result
-    
-
-    def _scalar_vector_multiply(self, other):
-        """Temporary method whilst working on code. Here, self is a scalar (e.g. a 0-dim Tensor) and other is a nx1 vector"""
-        
-        assert isinstance(other, Tensor), f"Expected a Tensor, got a {type(other)}"
-        result_requires_grad = self.requires_grad or other.requires_grad
-        result = Tensor(
-            data = self.data * other.data, 
-            requires_grad = result_requires_grad
-        )
-        result._parents += [self, other]   
-    
-        if self.requires_grad:
-            def vjp():
-                self.grad +=  np.dot(result.grad, other.data)
-            result._backward_fncs.append(vjp)
-        if other.requires_grad:
-            def vjp():
-                other.grad += result.grad * self.data 
-            result._backward_fncs.append(vjp)
-
-        return result
-    
-    def _scalar_matrix_multiply(self, other):
-        """Temporary method whilst working on code. Here, self is a scalar (e.g. a 0-dim Tensor) and other is a nx1 vector"""
-        
-        assert isinstance(other, Tensor), f"Expected a Tensor, got a {type(other)}"
-        result_requires_grad = self.requires_grad or other.requires_grad
-        result = Tensor(
-            data = self.data * other.data, 
-            requires_grad = result_requires_grad
-        )
-        result._parents += [self, other]   
-    
-        if self.requires_grad:
-            def vjp():
-                self.grad += np.sum(result.grad * other.data)
-            result._backward_fncs.append(vjp)
-        if other.requires_grad:
-            def vjp():
-                other.grad += result.grad * self.data
-            result._backward_fncs.append(vjp)
-
-        return result
-
-    def _vector_vector_add(self, other):
-        """Temporary method whilst working on code. Here, self in a nx1 vector and other is a nx1 vector"""
-
-        assert isinstance(other, Tensor), f"Expected a Tensor, got a {type(other)}"
-        result_requires_grad = self.requires_grad or other.requires_grad
-        result = Tensor(
-            data = self.data + other.data, 
-            requires_grad = result_requires_grad
-        )
         result._parents += [self, other]   
 
         if self.requires_grad:
             def vjp():
-                self.grad += result.grad
+                self.grad += result.grad.T @ self.data 
             result._backward_fncs.append(vjp)
         if other.requires_grad:
             def vjp():
-                other.grad += result.grad
+                other.grad += self.data.T @ result.grad  
             result._backward_fncs.append(vjp)
 
-        return result
-    
     
     def relu(self):
         """Temporary method whilst working on code. Here, self in a nx1 vector"""
@@ -233,10 +160,13 @@ class Tensor:
         result._parents += [self]
 
         if self.requires_grad:
-            def vjp():
-                grad_masked = result.grad.copy()
-                grad_masked[mask] = 0
-                self.grad += grad_masked
+            def make_vjp(mask):
+                def vjp():
+                    grad_masked = result.grad.copy()
+                    grad_masked[mask] = 0
+                    self.grad += grad_masked
+                return vjp
+            vjp = make_vjp(mask)
             result._backward_fncs.append(vjp)
 
         return result
