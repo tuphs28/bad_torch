@@ -6,7 +6,7 @@ import numpy as np
 from badtorch.autograd import Tensor
 from badtorch.nn.init import xavier_normal_, xavier_uniform_
 
-class Module:
+class Module(ABC):
 
     @abstractmethod
     def __call__(self, input_tensor: Tensor) -> Tensor:
@@ -14,6 +14,10 @@ class Module:
 
     @abstractmethod
     def parameters(self) -> list[Tensor]:
+        pass
+
+    @abstractmethod
+    def __repr__(self) -> str:
         pass
 
 
@@ -38,10 +42,18 @@ class Linear(Module):
         
         if bias:
             self.bias = Tensor(np.zeros(shape=(out_dim,)), requires_grad=True)
+        else:
+            self.bias = None
 
     def __call__(self, input_tensor: Tensor) -> Tensor:
-        return input_tensor @ self.linear + self.bias
-    
+        output = input_tensor @ self.linear
+        if self.bias is not None:
+            output += self.bias
+        return output
+
     def parameters(self) -> list[Tensor]:
-        return [self.linear, self.bias]
+        return [self.linear] + ([self.bias] if self.bias is not None else [])
+    
+    def __repr__(self) -> str:
+        return f"Linear(in_dim={self.linear.shape[0]}, out_dim={self.linear.shape[1]}, bias={hasattr(self, 'bias')})"
 

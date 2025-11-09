@@ -7,7 +7,7 @@ def xavier_uniform_(tensor: Tensor, gain: float = 1.0) -> Tensor:
     if len(tensor.shape) < 2:
         raise ValueError("Xavier init require a tensor with >= 2 dims")
     
-    fan_in, fan_out = tensor.shape[1], tensor.shape[0] # only doing linear atm, change if needed
+    fan_in, fan_out = tensor.shape[0], tensor.shape[1] # only doing linear atm, change if needed
     bound = gain * np.sqrt(6 / (fan_in + fan_out))
     tensor.data = np.random.uniform(low=-bound, high=bound, size=tensor.shape)
 
