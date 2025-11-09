@@ -3,6 +3,23 @@ import pytest
 
 from badtorch.autograd.core import Tensor
 
+@pytest.fixture(scope="function")
+def W1_4x4():
+    return Tensor(np.array([[1, 1, 1, 1],
+                            [2, 2, 2, 2],
+                            [3, 3, 3, 3],
+                            [4, 4, 4, 4]], dtype=np.float32), requires_grad=True)
+
+@pytest.fixture(scope="function")
+def W2_4x4():
+    return Tensor(np.array([[1, 0, 0, 0],
+                            [0, 1, 0, 0],
+                            [0, 0, 1, 0],
+                            [0, 0, 0, 1]], dtype=np.float32), requires_grad=True)
+
+@pytest.fixture(scope="function")
+def b_4():
+    return Tensor(np.array([1, 2, 3, 4], dtype=np.float32), requires_grad=True)
 
 @pytest.fixture(scope="function")
 def W1():
@@ -66,4 +83,58 @@ def test_basic_relu(b2):
     y.backward()
     assert np.allclose(b2.grad, np.array([0, 1, 0, 0, 1, 0], dtype=np.float32))
 
+def test_matrix_multiply_with_bias_broadcasting(W1_4x4, W2_4x4, b_4):
+    Y = W1_4x4 @ W2_4x4 + b_4
+    expected_Y = np.array([[2, 3, 4, 5],
+                           [3, 4, 5, 6],
+                           [4, 5, 6, 7],
+                           [5, 6, 7, 8]], dtype=np.float32)
+    assert np.allclose(Y.data, expected_Y)
+    Y.backward()
     
+    expected_W1_grad = np.ones((4, 4), dtype=np.float32)
+    assert np.allclose(W1_4x4.grad, expected_W1_grad)
+    expected_W2_grad = np.full((4, 4), 10.0, dtype=np.float32)
+    assert np.allclose(W2_4x4.grad, expected_W2_grad)
+    expected_b_grad = np.array([4, 4, 4, 4], dtype=np.float32)
+    assert np.allclose(b_4.grad, expected_b_grad)
+
+def test_matrix_multiply_with_scalar_bias(W1_4x4, W2_4x4):
+    b_scalar = Tensor(10.0, requires_grad=True)
+    Y = W1_4x4 @ W2_4x4 + b_scalar
+    expected_Y = np.array([[11, 11, 11, 11],
+                           [12, 12, 12, 12],
+                           [13, 13, 13, 13],
+                           [14, 14, 14, 14]], dtype=np.float32)
+    assert np.allclose(Y.data, expected_Y)
+    Y.backward()
+    assert np.allclose(b_scalar.grad, 16.0)
+    assert np.allclose(W1_4x4.grad, np.ones((4, 4), dtype=np.float32))
+    assert np.allclose(W2_4x4.grad, np.full((4, 4), 10.0, dtype=np.float32))
+
+def test_matrix_vector_multiply_with_bias():
+    W = Tensor(np.array([[1, 2, 3],
+                         [4, 5, 6]], dtype=np.float32), requires_grad=True)
+    x = Tensor(np.array([1, 1, 1], dtype=np.float32), requires_grad=True)
+    b = Tensor(np.array([10, 20], dtype=np.float32), requires_grad=True)
+    y = W @ x + b
+    expected_y = np.array([16, 35], dtype=np.float32)  
+    assert np.allclose(y.data, expected_y)
+    y.backward()
+    assert np.allclose(x.grad, np.array([5, 7, 9], dtype=np.float32))
+    assert np.allclose(W.grad, np.ones((2, 3), dtype=np.float32))
+    assert np.allclose(b.grad, np.array([1, 1], dtype=np.float32))
+
+def test_matrix_vector_multiply_with_bias_and_relu():
+    W = Tensor(np.array([[1, 2, 3],
+                         [-4, -5, -6]], dtype=np.float32), requires_grad=True)
+    x = Tensor(np.array([1, 1, 1], dtype=np.float32), requires_grad=True)
+    b = Tensor(np.array([10, -5], dtype=np.float32), requires_grad=True)
+    y = W @ x + b
+    z = y.relu()
+    expected_z = np.array([16, 0], dtype=np.float32)
+    assert np.allclose(z.data, expected_z)
+    z.backward()
+    assert np.allclose(x.grad, np.array([1, 2, 3], dtype=np.float32))
+    assert np.allclose(W.grad, np.array([[1, 1, 1], [0, 0, 0]], dtype=np.float32))
+    assert np.allclose(b.grad, np.array([1, 0], dtype=np.float32))

@@ -62,7 +62,7 @@ class Tensor:
 
         for dim_idx, (dim_grad, dim_data) in enumerate(zip(grad.shape, self.data.shape)):
             if dim_grad > 1 and dim_data == 1:
-                grad = np.sum(grad, axis=dim_grad, keepdims=True)
+                grad = np.sum(grad, axis=dim_idx, keepdims=True)
         
         return grad
 
@@ -139,12 +139,22 @@ class Tensor:
 
         if self.requires_grad:
             def vjp():
-                self.grad += result.grad.T @ self.data 
+                other_data = other.data if len(other.data.shape) > 1 else other.data[:,None]
+                result_grad = result.grad if len(result.grad.shape) > 1 else result.grad[:,None]
+                grad = result_grad @ other_data.swapaxes(-1, -2)
+                grad = grad if len(self.data.shape) > 1 else grad[:,0]
+                self.grad += grad
             result._backward_fncs.append(vjp)
         if other.requires_grad:
             def vjp():
-                other.grad += self.data.T @ result.grad  
+                self_data = self.data if len(self.data.shape) > 1 else self.data[:,None]
+                result_grad = result.grad if len(result.grad.shape) > 1 else result.grad[:,None]
+                grad = self_data.swapaxes(-1, -2) @ result_grad
+                grad = grad if len(other.data.shape) > 1 else grad[:,0]
+                other.grad += grad
             result._backward_fncs.append(vjp)
+
+        return result
 
     
     def relu(self):
