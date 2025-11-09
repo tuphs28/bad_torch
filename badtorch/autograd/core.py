@@ -9,7 +9,7 @@ from numpy.typing import NDArray
 # 
 # TO-DO:
 #   1) Handle data types
-#   2) Handle different shapes + broadcasting
+#   2) Handle different shapes + broadcasting // DONE
 #   3) Make API less dogshit
 
 
