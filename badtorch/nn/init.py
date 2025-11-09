@@ -2,7 +2,7 @@ import numpy as np
 
 from badtorch.autograd import Tensor
 
-# I'm following torch convention here for init to be inplace - not sure why it does this?
+# I'm following torch convention here for init to be inplace
 
 def xavier_uniform_(tensor: Tensor, gain: float = 1.0) -> None:
 

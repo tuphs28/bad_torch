@@ -5,23 +5,14 @@ from typing import Callable, Optional, Union
 import numpy as np
 from numpy.typing import NDArray
 
-# Super basic implementation at the moment
-# 
-# TO-DO:
-#   1) Handle data types
-#   2) Handle different shapes + broadcasting // DONE
-#   3) Make API less dogshit
-
 
 class Tensor:
 
     def __init__(self, data: Union[np.ndarray, int, float], requires_grad: bool = False) -> None:
 
         if isinstance(data, (int, float)):
-            data = np.array(data, dtype=np.float32)
-        elif isinstance(data, np.ndarray):
-            assert data.dtype == np.float32, f"Expected float32 for numpy datatype, got {data.dtype}"
-        else:
+            data = np.array(data, dtype=np.float64)
+        elif not isinstance(data, np.ndarray):
             raise ValueError(f"Tensor class does not currently support data of type {type(data)}")
 
         self.data = data
@@ -69,7 +60,7 @@ class Tensor:
 
     def __add__(self, other: Union[int, float, Tensor]) -> Tensor:
 
-        if isinstance(other, (int, float)):
+        if isinstance(other, (int, float, np.ndarray)):
             other = Tensor(other, requires_grad=False)
         elif not isinstance(other, Tensor):
             raise ValueError(f"Expected an int, a float, or Tensor, got a {type(other)}")
@@ -99,7 +90,7 @@ class Tensor:
 
     def __sub__(self, other: Union[int, float, Tensor]) -> Tensor:
 
-        if isinstance(other, (int, float)):
+        if isinstance(other, (int, float, np.ndarray)):
             other = Tensor(other, requires_grad=False)
         elif not isinstance(other, Tensor):
             raise ValueError(f"Expected an int, a float, or Tensor, got a {type(other)}")
@@ -109,7 +100,7 @@ class Tensor:
 
     def __mul__(self, other: Union[int, float, Tensor]) -> Tensor:
 
-        if isinstance(other, (int, float)):
+        if isinstance(other, (int, float, np.ndarray)):
             other = Tensor(other, requires_grad=False)
         elif not isinstance(other, Tensor):
             raise ValueError(f"Expected an int, a float, or Tensor, got a {type(other)}")

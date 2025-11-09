@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "badtorch"
+version = "1.0"
+dependencies = [
+  "numpy",
+  "scikit-learn",
+  "pandas",
+  "matplotlib",
+  "tdqm"
+]
+
+[tool.setuptools.packages.find]
+where = ["."]

@@ -16,10 +16,6 @@ class Module(ABC):
     def parameters(self) -> list[Tensor]:
         pass
 
-    @abstractmethod
-    def __repr__(self) -> str:
-        pass
-
 
 class Linear(Module):
 
@@ -53,7 +49,71 @@ class Linear(Module):
 
     def parameters(self) -> list[Tensor]:
         return [self.linear] + ([self.bias] if self.bias is not None else [])
-    
-    def __repr__(self) -> str:
-        return f"Linear(in_dim={self.linear.shape[0]}, out_dim={self.linear.shape[1]}, bias={hasattr(self, 'bias')})"
 
+class Dropout(Module):
+
+    def __init__(self, p: float = 0.05):
+        self.p = p
+
+    def __call__(self, input_tensor: Tensor) -> Tensor:
+        mask = np.ones_like(input_tensor.data)
+        mask[np.random.uniform(low=0, high=1, size=mask.shape) < self.p] = 0
+        mask *= 1 / (1 - self.p)
+        return Tensor(mask) * input_tensor
+    
+    def parameters(self) -> list[Tensor]:
+        return []
+
+
+class MLP(Module):
+
+    def __init__(
+        self,
+        in_dims: list[int],
+        out_dims: list[int],
+        init: Literal["xavier_normal", "xavier_uniform"] = "xavier_normal",
+        dropout: bool = True,
+        dropout_p: float = 0.05
+    ) -> None:
+        
+        assert len(in_dims) == len(out_dims), f"Need list of input and output dimensions to be the same, currently have {len(in_dims)} and {len(out_dims)}"
+
+        self.training = True
+        
+
+        self.linear_layers = []
+        for in_dim, out_dim in zip(in_dims, out_dims):
+            self.linear_layers.append(
+                Linear(in_dim=in_dim, out_dim=out_dim, bias=True, init=init)
+            )
+        
+        self.dropout = None
+        if dropout:
+            self.dropout = Dropout(p=dropout_p)
+
+    def __call__(self, input_tensor: Tensor) -> Tensor:
+        x = input_tensor
+        for idx, layer in enumerate(self.linear_layers[:-1]):
+            x = layer(x) 
+            x = x.relu()
+            if self.training and self.dropout:
+                x = self.dropout(x)
+        logits = self.linear_layers[-1](x)
+        return logits
+    
+    def parameters(self) -> list[Tensor]:
+        parameters = []
+        for layer in self.linear_layers:
+            parameters += layer.parameters()
+        return parameters
+    
+    def train_mode(self) -> None:
+        self.training = True
+
+    def eval_mode(self) -> None:
+        self.training = False
+    
+
+        
+
+        
