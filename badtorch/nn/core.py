@@ -34,9 +34,9 @@ class Linear(Module):
         
         self.linear = Tensor(data=np.ones(shape=(in_dim, out_dim)), requires_grad=True)
         if init == "xavier_normal":
-            self.linear = xavier_normal_(self.linear)
+            xavier_normal_(self.linear)
         elif init == "xavier_uniform":
-            self.linear = xavier_uniform_(self.linear)
+            xavier_uniform_(self.linear)
         else:
             raise ValueError(f"Unrecognised init type: {init}")
         
