@@ -33,7 +33,7 @@ class Tensor:
 
 
     @property
-    def shape(self) -> tuple[int]:
+    def shape(self) -> tuple:
         return self.data.shape
     
     def backward(self) -> None:
@@ -94,7 +94,7 @@ class Tensor:
                 other.grad += grad
             result._backward_fncs.append(vjp)
 
-        return result
+        return result 
     
 
     def __sub__(self, other: Union[int, float, Tensor]) -> Tensor:
@@ -135,6 +135,9 @@ class Tensor:
             result._backward_fncs.append(vjp)
 
         return result
+    
+    def __neg__(self) -> Tensor:
+        return Tensor(-1) * self
     
     def __matmul__(self, other: Tensor) -> Tensor:
 
@@ -214,7 +217,47 @@ class Tensor:
 
         if self.requires_grad:
             def vjp():
-                self.grad += result.grad * self.data
+                self.grad += result.grad * result.data
+            result._backward_fncs.append(vjp)
+
+        return result
+    
+    def sum(self, dim: int) -> Tensor:
+        assert len(self.shape) in [1, 2], "Sum only currently designed for 1D + 2D tensors"
+        result_data = np.sum(self.data, axis=dim, keepdims=True)
+        result = Tensor(
+            data = result_data,
+            requires_grad = self.requires_grad
+        )
+        result._parents += [self]
+
+        if self.requires_grad:
+            def vjp():
+                grad = np.ones_like(self.data) * result.grad
+                self.grad += grad
+            result._backward_fncs.append(vjp)
+        return result
+    
+    def logsumexp(self, dim: int) -> Tensor:
+
+        assert len(self.shape) in [1, 2], "Softmax only currently designed for 1D + 2D tensors"
+
+        data_max = np.max(self.data, axis=dim, keepdims=True)
+        data_shifted = self.data - data_max
+        exp_data_shifted = np.exp(data_shifted)
+        sum_exp = np.sum(exp_data_shifted, axis=dim, keepdims=True)
+        result_data = np.log(sum_exp) + data_max
+        result = Tensor(
+            data = result_data, 
+            requires_grad = self.requires_grad
+        )
+        result._parents += [self]
+        
+        if self.requires_grad:
+            def vjp():
+                softmax = exp_data_shifted / sum_exp
+                grad = result.grad                
+                self.grad += grad * softmax
             result._backward_fncs.append(vjp)
 
         return result

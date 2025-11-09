@@ -138,3 +138,69 @@ def test_matrix_vector_multiply_with_bias_and_relu():
     assert np.allclose(x.grad, np.array([1, 2, 3], dtype=np.float32))
     assert np.allclose(W.grad, np.array([[1, 1, 1], [0, 0, 0]], dtype=np.float32))
     assert np.allclose(b.grad, np.array([1, 0], dtype=np.float32))
+
+def test_log_forward():
+    x = Tensor(np.array([1.0, np.e, np.e**2], dtype=np.float32), requires_grad=True)
+    y = x.log()
+    assert np.allclose(y.data, [0.0, 1.0, 2.0], atol=1e-6)
+
+def test_log_backward():
+    x = Tensor(np.array([2.0, 4.0], dtype=np.float32), requires_grad=True)
+    y = x.log()
+    y.backward()
+    assert np.allclose(x.grad, [0.5, 0.25])  
+
+def test_exp_forward():
+    x = Tensor(np.array([0.0, 1.0, 2.0], dtype=np.float32), requires_grad=True)
+    y = x.exp()
+    assert np.allclose(y.data, [1.0, np.e, np.e**2], atol=1e-6)
+
+def test_exp_backward():
+    x = Tensor(np.array([0.0, 1.0, 2.0], dtype=np.float32), requires_grad=True)
+    y = x.exp()
+    y.backward()
+    assert np.allclose(x.grad, np.exp(x.data), atol=1e-6)
+
+def test_sum_1d():
+    x = Tensor(np.array([1.0, 2.0, 3.0], dtype=np.float32), requires_grad=True)
+    y = x.sum(dim=0)
+    assert np.allclose(y.data, 6.0)
+    y.backward()
+    assert np.allclose(x.grad, [1.0, 1.0, 1.0])
+
+def test_sum_2d_along_cols():
+    x = Tensor(np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32), requires_grad=True)
+    y = x.sum(dim=1)
+    assert y.shape == (2, 1)  
+    assert np.allclose(y.data, [[3.0], [7.0]])
+    y.backward()
+    assert np.allclose(x.grad, [[1.0, 1.0], [1.0, 1.0]])
+
+def test_sum_2d_along_rows():
+    x = Tensor(np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32), requires_grad=True)
+    y = x.sum(dim=0)
+    assert y.shape == (1, 2)  
+    assert np.allclose(y.data, [[4.0, 6.0]])
+    y.backward()
+    assert np.allclose(x.grad, [[1.0, 1.0], [1.0, 1.0]])
+
+def test_logsumexp_numerical_stability():
+    x = Tensor(np.array([1000.0, 1001.0, 1002.0], dtype=np.float32), requires_grad=True)
+    y = x.logsumexp(dim=0)
+    assert np.isfinite(y.data)
+    assert np.allclose(y.data, 1002.407, atol=0.01)
+
+def test_logsumexp_backward_is_softmax():
+    x = Tensor(np.array([1.0, 2.0, 3.0], dtype=np.float32), requires_grad=True)
+    y = x.logsumexp(dim=0)
+    y.backward()
+    exp_x = np.exp(x.data)
+    expected_grad = exp_x / np.sum(exp_x)
+    assert np.allclose(x.grad, expected_grad, atol=1e-6)
+
+def test_logsumexp_2d():
+    x = Tensor(np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32), requires_grad=True)
+    y = x.logsumexp(dim=1)
+    assert y.shape == (2, 1)
+    y.backward()
+    assert np.allclose(x.grad.sum(axis=1, keepdims=True), [[1.0], [1.0]])
