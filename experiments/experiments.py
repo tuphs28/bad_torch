@@ -61,7 +61,7 @@ if __name__ == "__main__":
             "dropout_p": 0.25
         },
 
-            {
+        {
             "num_epochs": num_epochs,
             "lr": lr,
             "batch_size": batch_size,
