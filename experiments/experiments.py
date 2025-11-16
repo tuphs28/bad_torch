@@ -1,12 +1,13 @@
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+import os
 
 from badtorch.training.core import train_mlp
 
 if __name__ == "__main__":
 
-    num_trials_per_experiment = 5
+    num_trials_per_experiment = 1
 
     num_epochs = 40
     lr = 1e-2
@@ -14,6 +15,11 @@ if __name__ == "__main__":
     in_dims = [784, 256, 128]
     out_dims = [256, 128, 10]
     data_dir = "./data"
+
+    if os.path.exists(data_dir):
+        files = os.listdir(data_dir)
+        for f in files:
+            os.remove(os.path.join(data_dir, f))
 
     experiment_settings = [
 
