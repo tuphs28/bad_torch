@@ -3,7 +3,7 @@ import pytest
 from badtorch.nn import MLP
 
 
-def test_simple_mlp():
+def test_simple_mlp_param_count():
 
     model = MLP(
         in_dims=[10, 20],
