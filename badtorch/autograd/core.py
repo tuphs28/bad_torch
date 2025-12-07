@@ -1,9 +1,13 @@
 from __future__ import annotations
+from typing import TYPE_CHECKING
 
 from typing import Callable, Optional, Union
 
 import numpy as np
 from numpy.typing import NDArray
+
+if TYPE_CHECKING:
+    from functions import Function
 
 
 class Tensor:
@@ -12,7 +16,7 @@ class Tensor:
 
         if isinstance(data, (int, float)):
             data = np.array(data, dtype=np.float64)
-        elif not isinstance(data, np.ndarray):
+        if not isinstance(data, np.ndarray):
             raise ValueError(f"Tensor class does not currently support data of type {type(data)}")
 
         self.data = data
@@ -20,24 +24,23 @@ class Tensor:
         self.requires_grad = requires_grad
 
         self._backward_fncs = []
-        self._parents = []
 
+        self._creator: Optional[Function] = None
 
     @property
     def shape(self) -> tuple:
         return self.data.shape
     
     def backward(self) -> None:
-
         self.grad = np.ones_like(self.data)
-
         visited_ancestors = set()
         ordered_ancestors = []
-        def topo_sort(current_tensor):
+        def topo_sort(current_tensor: Tensor):
             visited_ancestors.add(current_tensor)
-            for parent in current_tensor._parents:
-                if parent not in visited_ancestors:
-                    topo_sort(parent)
+            if current_tensor._creator:
+                for parent in current_tensor._creator.parents:
+                    if parent not in visited_ancestors:
+                        topo_sort(parent)
             ordered_ancestors.append(current_tensor)
         topo_sort(self)
 
@@ -57,199 +60,49 @@ class Tensor:
         
         return grad
 
-
     def __add__(self, other: Union[int, float, Tensor]) -> Tensor:
-
-        if isinstance(other, (int, float, np.ndarray)):
-            other = Tensor(other, requires_grad=False)
-        elif not isinstance(other, Tensor):
-            raise ValueError(f"Expected an int, a float, or Tensor, got a {type(other)}")
-        
-        result_requires_grad = self.requires_grad or other.requires_grad
-        result = Tensor(
-            data = self.data + other.data, 
-            requires_grad = result_requires_grad
-        )
-        result._parents += [self, other]   
-
-        if self.requires_grad:
-            def vjp():
-                grad = result.grad
-                grad = self._unbroadcast_gradient(grad)
-                self.grad += grad
-            result._backward_fncs.append(vjp)
-        if other.requires_grad:
-            def vjp():
-                grad = result.grad
-                grad = other._unbroadcast_gradient(grad)
-                other.grad += grad
-            result._backward_fncs.append(vjp)
-
+        from .functions import Add
+        result = Add.apply(self, other)
         return result 
-    
-
-    def __sub__(self, other: Union[int, float, Tensor]) -> Tensor:
-
-        if isinstance(other, (int, float, np.ndarray)):
-            other = Tensor(other, requires_grad=False)
-        elif not isinstance(other, Tensor):
-            raise ValueError(f"Expected an int, a float, or Tensor, got a {type(other)}")
-
-        return self + (Tensor(-1) * other)
-    
 
     def __mul__(self, other: Union[int, float, Tensor]) -> Tensor:
-
-        if isinstance(other, (int, float, np.ndarray)):
-            other = Tensor(other, requires_grad=False)
-        elif not isinstance(other, Tensor):
-            raise ValueError(f"Expected an int, a float, or Tensor, got a {type(other)}")
-
-        result_requires_grad = self.requires_grad or other.requires_grad
-        result = Tensor(
-            data = self.data * other.data, 
-            requires_grad = result_requires_grad
-        )
-        result._parents += [self, other]   
-    
-        if self.requires_grad:
-            def vjp():
-                grad = result.grad * other.data
-                grad = self._unbroadcast_gradient(grad)
-                self.grad += grad
-            result._backward_fncs.append(vjp)
-        if other.requires_grad:
-            def vjp():
-                grad = result.grad * self.data
-                grad = other._unbroadcast_gradient(grad)
-                other.grad += grad
-            result._backward_fncs.append(vjp)
-
+        from .functions import Mul
+        result = Mul.apply(self, other)
         return result
     
     def __neg__(self) -> Tensor:
-        return Tensor(-1) * self
+        return self * -1
     
-    def __matmul__(self, other: Tensor) -> Tensor:
-
-        assert isinstance(other, Tensor), f"Expected a Tensor, got a {type(other)} which is not currently supported"
-
-        result_requires_grad = self.requires_grad or other.requires_grad
-        result = Tensor(
-            data = self.data @ other.data, 
-            requires_grad = result_requires_grad
-        )
-        result._parents += [self, other]   
-
-        if self.requires_grad:
-            def vjp():
-                other_data = other.data if len(other.data.shape) > 1 else other.data[:,None]
-                result_grad = result.grad if len(result.grad.shape) > 1 else result.grad[:,None]
-                grad = result_grad @ other_data.swapaxes(-1, -2)
-                grad = grad if len(self.data.shape) > 1 else grad[:,0]
-                self.grad += grad
-            result._backward_fncs.append(vjp)
-        if other.requires_grad:
-            def vjp():
-                self_data = self.data if len(self.data.shape) > 1 else self.data[:,None]
-                result_grad = result.grad if len(result.grad.shape) > 1 else result.grad[:,None]
-                grad = self_data.swapaxes(-1, -2) @ result_grad
-                grad = grad if len(other.data.shape) > 1 else grad[:,0]
-                other.grad += grad
-            result._backward_fncs.append(vjp)
-
+    def __sub__(self, other: Union[int, float, Tensor]) -> Tensor:
+        return self + (-other)
+    
+    def __matmul__(self, other: Union[int, float, Tensor]) -> Tensor:
+        from .functions import MatMul
+        result = MatMul.apply(self, other)
         return result
 
-    
     def relu(self) -> Tensor:
-        """Temporary method whilst working on code. Here, self in a nx1 vector"""
-
-        mask = self.data <= 0.0
-        data_masked = self.data.copy()
-        data_masked[mask] = 0
-        result = Tensor(
-            data = data_masked, 
-            requires_grad = self.requires_grad
-        )
-        result._parents += [self]
-
-        if self.requires_grad:
-            def make_vjp(mask):
-                def vjp():
-                    grad_masked = result.grad.copy()
-                    grad_masked[mask] = 0
-                    self.grad += grad_masked
-                return vjp
-            vjp = make_vjp(mask)
-            result._backward_fncs.append(vjp)
-
+        from .functions import ReLU
+        result = ReLU.apply(self)
         return result
     
     def log(self) -> Tensor:
-        result = Tensor(
-            data = np.log(self.data), 
-            requires_grad = self.requires_grad
-        )
-        result._parents += [self]
-
-        if self.requires_grad:
-            def vjp():
-                self.grad += result.grad / self.data
-            result._backward_fncs.append(vjp)
-
+        from .functions import Log
+        result = Log.apply(self)
         return result
     
     def exp(self) -> Tensor:
-        result = Tensor(
-            data = np.exp(self.data), 
-            requires_grad = self.requires_grad
-        )
-        result._parents += [self]
-
-        if self.requires_grad:
-            def vjp():
-                self.grad += result.grad * result.data
-            result._backward_fncs.append(vjp)
-
+        from .functions import Exp
+        result = Exp.apply(self)
         return result
     
     def sum(self, dim: int) -> Tensor:
-        assert len(self.shape) in [1, 2], "Sum only currently designed for 1D + 2D tensors"
-        result_data = np.sum(self.data, axis=dim, keepdims=True)
-        result = Tensor(
-            data = result_data,
-            requires_grad = self.requires_grad
-        )
-        result._parents += [self]
-
-        if self.requires_grad:
-            def vjp():
-                grad = np.ones_like(self.data) * result.grad
-                self.grad += grad
-            result._backward_fncs.append(vjp)
+        from .functions import Sum
+        result = Sum.apply(self, dim=dim)
         return result
     
     def logsumexp(self, dim: int) -> Tensor:
-
-        assert len(self.shape) in [1, 2], "Softmax only currently designed for 1D + 2D tensors"
-
-        data_max = np.max(self.data, axis=dim, keepdims=True)
-        data_shifted = self.data - data_max
-        exp_data_shifted = np.exp(data_shifted)
-        sum_exp = np.sum(exp_data_shifted, axis=dim, keepdims=True)
-        result_data = np.log(sum_exp) + data_max
-        result = Tensor(
-            data = result_data, 
-            requires_grad = self.requires_grad
-        )
-        result._parents += [self]
-        
-        if self.requires_grad:
-            def vjp():
-                softmax = exp_data_shifted / sum_exp
-                grad = result.grad                
-                self.grad += grad * softmax
-            result._backward_fncs.append(vjp)
-
+        from .functions import LogSumExp
+        result = LogSumExp.apply(self, dim=dim)
         return result
 
